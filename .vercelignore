@@ -1,0 +1,4 @@
+local.db
+lib/db/local.ts
+lib/local-storage.ts
+*.log

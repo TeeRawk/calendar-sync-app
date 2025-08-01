@@ -51,9 +51,34 @@ export default function NewSyncPage() {
       } else {
         const errorData = await response.json().catch(() => ({}));
         if (response.status === 401 && errorData.error === 'REAUTH_REQUIRED') {
-          console.log('🔄 Re-authentication required, triggering Google sign-in...');
-          // Automatically trigger re-authentication
-          signIn('google', { callbackUrl: window.location.href });
+          console.log('🔄 Re-authentication required, cleaning up and triggering Google sign-in...');
+          
+          // First, reset the auth state in the backend
+          try {
+            await fetch('/api/debug/reset-auth', { method: 'POST' });
+          } catch (resetError) {
+            console.warn('Could not reset auth state:', resetError);
+          }
+          
+          // Force a completely fresh consent flow
+          const authUrl = new URL('https://accounts.google.com/oauth/revoke');
+          authUrl.searchParams.set('token', 'dummy'); // This will fail but clears some state
+          
+          // Try to clear any cached consent
+          try {
+            await fetch(authUrl.toString(), { mode: 'no-cors' });
+          } catch (e) {
+            // Expected to fail, but helps clear state
+          }
+          
+          // Force a fresh consent flow with additional parameters
+          signIn('google', { 
+            callbackUrl: window.location.href,
+            // Force consent and approval prompt
+            prompt: 'consent select_account',
+            access_type: 'offline',
+            include_granted_scopes: 'true'
+          });
           return;
         } else if (response.status === 401) {
           setError(errorData.message || 'Authentication expired. Please sign out and sign back in.');
@@ -135,14 +160,38 @@ export default function NewSyncPage() {
                   Error Loading Calendars
                 </h3>
                 <p className="text-sm text-red-700 break-words">{error}</p>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={fetchCalendars}
-                  className="mt-2 w-full sm:w-auto"
-                >
-                  Try Again
-                </Button>
+                <div className="flex flex-col sm:flex-row gap-2 mt-3">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={fetchCalendars}
+                    className="w-full sm:w-auto"
+                  >
+                    Try Again
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={async () => {
+                      try {
+                        // Force complete logout
+                        await fetch('/api/auth/force-logout', { method: 'POST' });
+                        
+                        // Clear any browser storage
+                        localStorage.clear();
+                        sessionStorage.clear();
+                        
+                        // Force browser to go to home page, then redirect to fresh auth
+                        window.location.href = '/?reauth=1';
+                      } catch (e) {
+                        console.error('Reset failed:', e);
+                      }
+                    }}
+                    className="w-full sm:w-auto"
+                  >
+                    Force Fresh Login
+                  </Button>
+                </div>
               </div>
             )}
 

@@ -13,9 +13,11 @@ export const authOptions: NextAuthOptions = {
         params: {
           scope: 'openid email profile https://www.googleapis.com/auth/calendar',
           access_type: 'offline',
-          prompt: 'consent',
+          prompt: 'consent select_account',
+          include_granted_scopes: 'true',
         },
       },
+      allowDangerousEmailAccountLinking: true,
     }),
   ],
   callbacks: {
@@ -41,7 +43,11 @@ export const authOptions: NextAuthOptions = {
       return token;
     },
     async signIn({ account, user, profile }) {
-      // Log what we receive from Google
+      console.log('🔍 SignIn callback triggered');
+      console.log('  Account:', account ? { provider: account.provider, type: account.type, providerAccountId: account.providerAccountId } : 'null');
+      console.log('  User:', user ? { id: user.id, email: user.email } : 'null');
+      console.log('  Profile:', profile ? { sub: profile.sub, email: profile.email } : 'null');
+      
       if (account?.provider === 'google') {
         console.log('🔍 Google sign-in account data:');
         console.log('  Provider:', account.provider);
@@ -52,11 +58,43 @@ export const authOptions: NextAuthOptions = {
         console.log('  Access type:', account.access_type);
         
         if (!account.refresh_token) {
-          console.log('⚠️ No refresh token received from Google - this will cause issues later');
+          console.log('⚠️ No refresh token received from Google');
+          
+          // Clean up any orphaned user records for this email to prevent conflicts
+          if (profile?.email) {
+            const { db } = await import('./db');
+            const { users, accounts } = await import('./db/schema');
+            const { eq, and, isNull } = await import('drizzle-orm');
+            
+            try {
+              // Find users with this email that have no linked accounts
+              const orphanedUsers = await db
+                .select({ id: users.id })
+                .from(users)
+                .leftJoin(accounts, eq(accounts.userId, users.id))
+                .where(and(
+                  eq(users.email, profile.email),
+                  isNull(accounts.userId)
+                ));
+              
+              if (orphanedUsers.length > 0) {
+                console.log(`🧹 Cleaning up ${orphanedUsers.length} orphaned user records for ${profile.email}`);
+                for (const orphan of orphanedUsers) {
+                  await db.delete(users).where(eq(users.id, orphan.id));
+                }
+              }
+            } catch (cleanupError) {
+              console.warn('Could not cleanup orphaned users:', cleanupError);
+            }
+          }
+          
+          // Still allow sign-in but warn about potential issues
+          console.log('⚠️ Continuing without refresh token - user may need to re-authenticate later');
         } else {
           console.log('✅ Refresh token received - authentication should work properly');
         }
       }
+      
       return true;
     },
   },

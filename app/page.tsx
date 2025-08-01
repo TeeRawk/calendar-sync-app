@@ -1,7 +1,7 @@
 'use client';
 
 import { useSession, signIn } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Calendar, ArrowRight, Shield, Clock } from 'lucide-react';
@@ -10,13 +10,26 @@ import Link from 'next/link';
 export default function HomePage() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
-  // Redirect authenticated users directly to dashboard
+  // Handle forced re-auth flow
   useEffect(() => {
+    const reauth = searchParams.get('reauth');
+    if (reauth && !session) {
+      // Force a completely fresh Google auth with all parameters
+      signIn('google', { 
+        callbackUrl: '/dashboard',
+        prompt: 'consent select_account',
+        access_type: 'offline',
+        include_granted_scopes: 'true'
+      });
+      return;
+    }
+    
     if (session) {
       router.push('/dashboard');
     }
-  }, [session, router]);
+  }, [session, router, searchParams]);
 
   if (status === 'loading' || session) {
     return (

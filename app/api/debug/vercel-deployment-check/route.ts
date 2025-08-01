@@ -5,10 +5,10 @@ export async function GET() {
     const checks = {
       environment: process.env.NODE_ENV,
       timestamp: new Date().toISOString(),
-      requiredEnvVars: {},
-      cronJobs: {},
-      database: 'unknown',
-      auth: 'unknown'
+      requiredEnvVars: {} as Record<string, { present: boolean; length: number; optional?: boolean }>,
+      cronJobs: {} as Record<string, any>,
+      database: 'unknown' as string,
+      auth: 'unknown' as string
     };
     
     // Check required environment variables

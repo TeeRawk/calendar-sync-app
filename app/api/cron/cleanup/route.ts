@@ -2,6 +2,8 @@ import { db } from '@/lib/db';
 import { accounts, users, sessions } from '@/lib/db/schema';
 import { eq, isNull, lt } from 'drizzle-orm';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: Request) {
   const startTime = Date.now();
   

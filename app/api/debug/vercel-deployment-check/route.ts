@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   try {
     console.log('🔍 Running Vercel deployment validation check');
@@ -100,7 +102,7 @@ export async function GET() {
     
     // Determine overall status
     const missingEnvVars = Object.entries(checks.requiredEnvVars)
-      .filter(([key, value]) => !value.optional && !value.present)
+      .filter(([, value]) => !value.optional && !value.present)
       .map(([key]) => key);
     
     const cronJobsWorking = checks.cronJobs.sync?.accessible && checks.cronJobs.cleanup?.accessible;
@@ -109,7 +111,7 @@ export async function GET() {
     
     const overallStatus = {
       ready: missingEnvVars.length === 0 && cronJobsWorking && databaseWorking && authWorking,
-      issues: []
+      issues: [] as string[]
     };
     
     if (missingEnvVars.length > 0) {

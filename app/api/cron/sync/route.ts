@@ -1,6 +1,8 @@
 import { NextRequest } from 'next/server';
 import { syncAllActiveCalendars } from '@/lib/sync-service';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: NextRequest) {
   const startTime = Date.now();
   

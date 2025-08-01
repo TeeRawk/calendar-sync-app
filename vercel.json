@@ -2,13 +2,11 @@
   "crons": [
     {
       "path": "/api/cron/sync",
-      "schedule": "0 0 1 * *",
-      "_comment": "Monthly sync: 1st of every month at midnight UTC"
+      "schedule": "0 0 1 * *"
     },
     {
       "path": "/api/cron/cleanup", 
-      "schedule": "0 2 * * 0",
-      "_comment": "Weekly cleanup: Every Sunday at 2 AM UTC"
+      "schedule": "0 2 * * 0"
     }
   ]
 }

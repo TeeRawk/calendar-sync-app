@@ -11,13 +11,16 @@ export const authOptions: NextAuthOptions = {
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
       authorization: {
         params: {
-          scope: 'openid email profile https://www.googleapis.com/auth/calendar',
+          scope: 'openid email profile https://www.googleapis.com/auth/calendar.readonly',
           access_type: 'offline',
           prompt: 'consent select_account',
           include_granted_scopes: 'true',
+          // Enhanced security with PKCE
+          code_challenge_method: 'S256',
         },
       },
-      allowDangerousEmailAccountLinking: true,
+      // Security: Disabled dangerous email account linking to prevent account takeover
+      allowDangerousEmailAccountLinking: false,
     }),
   ],
   callbacks: {

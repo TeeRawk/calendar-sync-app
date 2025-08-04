@@ -6,45 +6,137 @@
   * {
     @apply border-gray-200;
   }
+  
+  html {
+    @apply scroll-smooth;
+  }
+  
   body {
     @apply bg-white text-gray-900;
+    /* Mobile optimizations */
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  
+  /* Focus improvements for accessibility and mobile */
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    @apply outline-none ring-2 ring-blue-500 ring-offset-2;
+  }
+  
+  /* Improve mobile scrolling */
+  * {
+    -webkit-overflow-scrolling: touch;
   }
 }
 
 @layer components {
   .btn {
-    @apply inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50;
+    @apply inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 touch-manipulation;
   }
   
   .btn-primary {
-    @apply btn bg-blue-600 text-white hover:bg-blue-700 h-10 px-4 py-2;
+    @apply btn bg-blue-600 text-white hover:bg-blue-700 h-12 px-6 py-3 sm:h-10 sm:px-4 sm:py-2;
   }
   
   .btn-secondary {
-    @apply btn bg-gray-100 text-gray-900 hover:bg-gray-200 h-10 px-4 py-2;
+    @apply btn bg-gray-100 text-gray-900 hover:bg-gray-200 h-12 px-6 py-3 sm:h-10 sm:px-4 sm:py-2;
   }
   
   .btn-outline {
-    @apply btn border border-gray-300 bg-white hover:bg-gray-50 h-10 px-4 py-2;
+    @apply btn border border-gray-300 bg-white hover:bg-gray-50 h-12 px-6 py-3 sm:h-10 sm:px-4 sm:py-2;
   }
   
   .card {
-    @apply rounded-lg border border-gray-200 bg-white shadow-sm;
+    @apply rounded-lg border border-gray-200 bg-white shadow-sm transition-shadow hover:shadow-md;
+  }
+  
+  .card-mobile {
+    @apply card p-4 sm:p-6 m-4 sm:m-0;
   }
   
   .input {
-    @apply flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-gray-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply flex h-12 w-full rounded-md border border-gray-300 bg-white px-4 py-3 text-base file:border-0 file:bg-transparent file:text-base file:font-medium placeholder:text-gray-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-colors touch-manipulation;
     font-size: 16px; /* Prevents zoom on mobile iOS */
   }
   
-  /* Mobile-specific input improvements */
+  .input-sm {
+    @apply input h-10 px-3 py-2 text-sm sm:h-8;
+  }
+  
+  /* Mobile container improvements */
+  .container-mobile {
+    @apply px-4 mx-auto max-w-full sm:px-6 lg:px-8;
+  }
+  
+  /* Mobile typography */
+  .heading-mobile {
+    @apply text-2xl leading-tight sm:text-3xl lg:text-4xl;
+  }
+  
+  /* Touch-friendly spacing */
+  .space-mobile {
+    @apply space-y-4 sm:space-y-6;
+  }
+  
+  /* Mobile navigation improvements */
+  .nav-mobile {
+    @apply flex items-center justify-between p-4 sm:p-6;
+  }
+  
+  /* Optimized mobile grid */
+  .grid-mobile {
+    @apply grid gap-4 sm:gap-6 lg:gap-8;
+  }
+  
+  /* Mobile-specific improvements */
   @media (max-width: 640px) {
     .input {
-      @apply h-12 text-base; /* Larger touch targets and text on mobile */
+      @apply h-14 text-base px-4; /* Even larger for better mobile UX */
     }
     
     .btn {
-      @apply h-12; /* Larger touch targets for buttons */
+      @apply h-12 min-h-[48px]; /* Ensure minimum touch target size */
+    }
+    
+    /* Improve tap targets for small UI elements */
+    button, a, [role="button"] {
+      @apply min-h-[44px] min-w-[44px];
+    }
+    
+    /* Optimize text for mobile readability */
+    body {
+      -webkit-text-size-adjust: 100%;
+      -webkit-font-smoothing: antialiased;
+    }
+    
+    /* Prevent horizontal scrolling */
+    html, body {
+      overflow-x: hidden;
+    }
+    
+    /* Improve form usability */
+    select {
+      @apply h-14 text-base;
+    }
+  }
+  
+  /* Tablet-specific optimizations */
+  @media (min-width: 641px) and (max-width: 1024px) {
+    .input {
+      @apply h-11 px-4 py-3;
+    }
+  }
+  
+  /* High DPI display optimizations */
+  @media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+    .card {
+      @apply shadow-sm border-gray-300;
     }
   }
 }

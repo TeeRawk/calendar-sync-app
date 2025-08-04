@@ -4,6 +4,10 @@ import { db } from '@/lib/db';
 import { accounts, users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 
+// Force dynamic rendering for this API route
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);

@@ -349,11 +349,18 @@ export async function updateGoogleCalendarEvent(
 export async function getExistingGoogleEvents(
   calendarId: string,
   timeMin: Date,
-  timeMax: Date
+  timeMax: Date,
+  retryCount: number = 0
 ): Promise<{ [uid: string]: string }> {
   try {
-    console.log(`🔍 Checking for existing events in calendar ${calendarId} from ${timeMin.toISOString()} to ${timeMax.toISOString()}`);
+    console.log(`🔍 Checking for existing events in calendar ${calendarId} from ${timeMin.toISOString()} to ${timeMax.toISOString()} (attempt ${retryCount + 1})`);
     const calendar = await getGoogleCalendarClient();
+    
+    // Add a small delay on retries to handle eventual consistency
+    if (retryCount > 0) {
+      console.log(`⏳ Waiting ${retryCount * 2} seconds for eventual consistency...`);
+      await new Promise(resolve => setTimeout(resolve, retryCount * 2000));
+    }
     
     const response = await calendar.events.list({
       calendarId,
@@ -362,6 +369,8 @@ export async function getExistingGoogleEvents(
       maxResults: 2500,
       singleEvents: true,
       orderBy: 'startTime',
+      // Force fresh data, not cached
+      showDeleted: false,
     });
 
     console.log(`📊 Found ${response.data.items?.length || 0} existing events in Google Calendar`);

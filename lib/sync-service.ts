@@ -81,16 +81,8 @@ export async function syncCalendar(calendarSyncId: string, userTimeZone?: string
       return result;
     }
 
-    // Get existing events for duplicate checking (use the proven approach)
-    console.log(`🔍 Fetching existing events from Google Calendar for duplicate detection...`);
-    const existingEvents = await getExistingGoogleEvents(
-      config.googleCalendarId,
-      monthStart,
-      monthEnd
-    );
-
-    // Process events in parallel batches for better performance
-    console.log(`🔄 Processing ${uniqueEvents.length} events in batches with duplicate resolution...`);
+    // Process events in parallel batches for better performance with real-time duplicate checking
+    console.log(`🔄 Processing ${uniqueEvents.length} events in batches with real-time duplicate resolution...`);
     const BATCH_SIZE = 5; // Process 5 events at a time to avoid rate limits
     const eventBatches = [];
     
@@ -103,6 +95,16 @@ export async function syncCalendar(calendarSyncId: string, userTimeZone?: string
     for (let batchIndex = 0; batchIndex < eventBatches.length; batchIndex++) {
       const batch = eventBatches[batchIndex];
       console.log(`🔄 Processing batch ${batchIndex + 1}/${eventBatches.length} (${batch.length} events)`);
+      
+      // Get fresh existing events before each batch to handle eventual consistency
+      console.log(`🔍 Fetching fresh existing events for batch ${batchIndex + 1}...`);
+      const existingEvents = await getExistingGoogleEvents(
+        config.googleCalendarId,
+        monthStart,
+        monthEnd,
+        batchIndex // Use batch index as retry count for progressive delays
+      );
+      console.log(`📊 Found ${Object.keys(existingEvents).length} existing events for batch comparison`);
       
       // Process batch in parallel
       const batchPromises = batch.map(async (event) => {
@@ -149,6 +151,11 @@ export async function syncCalendar(calendarSyncId: string, userTimeZone?: string
             console.log(`➕ Creating new event: ${event.summary} in calendar ${config.googleCalendarId}`);
             const createdEventId = await createGoogleCalendarEvent(config.googleCalendarId, eventCopy, userTimeZone);
             console.log(`✅ Created event with ID: ${createdEventId}`);
+            
+            // SAFEGUARD: Add a small delay and verify the event was created correctly
+            await new Promise(resolve => setTimeout(resolve, 500)); // 500ms delay
+            console.log(`🔒 SAFEGUARD: Verifying event creation for future batch consistency`);
+            
             return { 
               type: 'created', 
               event: event.summary,

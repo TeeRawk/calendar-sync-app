@@ -114,7 +114,15 @@ export async function syncCalendar(calendarSyncId: string, userTimeZone?: string
         try {
           console.log(`📝 Processing: "${event.summary}" (${event.sourceTimezone || 'Unknown timezone'})`);
           
-          // CRITICAL FIX: Convert timezone first to match what will be stored in Google Calendar
+          // Create a copy and add original UID to description
+          const eventCopy: CalendarEvent = {
+            ...event,
+            description: `${event.description || ''}\n\nOriginal UID: ${event.uid}`.trim(),
+          };
+
+          // TIMEZONE-AWARE DUPLICATE DETECTION:
+          // We need to generate the key using the same timezone conversion that createGoogleCalendarEvent will use
+          // This ensures duplicate detection matches what gets stored in Google Calendar
           const convertToUserTimezone = (sourceDate: Date) => {
             const hours = sourceDate.getHours();
             const minutes = sourceDate.getMinutes();
@@ -136,20 +144,10 @@ export async function syncCalendar(calendarSyncId: string, userTimeZone?: string
             
             return convertedTime;
           };
-
-          const adjustedStart = convertToUserTimezone(event.start);
-          const adjustedEnd = convertToUserTimezone(event.end);
-
-          // Create a copy with timezone-adjusted times and add original UID to description
-          const eventCopy: CalendarEvent = {
-            ...event,
-            start: adjustedStart,
-            end: adjustedEnd,
-            description: `${event.description || ''}\n\nOriginal UID: ${event.uid}`.trim(),
-          };
-
-          // Use timezone-adjusted start time for key - this matches what Google Calendar stores
-          const uniqueKey = `${event.uid}:${adjustedStart.toISOString()}`;
+          
+          // Generate key using timezone-adjusted time (for duplicate detection only)
+          const adjustedStartForKey = convertToUserTimezone(event.start);
+          const uniqueKey = `${event.uid}:${adjustedStartForKey.toISOString()}`;
           console.log(`🔍 Checking for duplicate with timezone-adjusted key: ${uniqueKey}`);
           console.log(`📋 Available existing event keys:`, Object.keys(existingEvents).slice(0, 5));
 
@@ -174,7 +172,7 @@ export async function syncCalendar(calendarSyncId: string, userTimeZone?: string
             const fallbackMatches = Object.keys(existingEvents).filter(key => key.startsWith(event.uid + ':'));
             if (fallbackMatches.length > 0) {
               console.log(`🚨 POTENTIAL DUPLICATE MISSED! Event "${event.summary}" with UID "${event.uid}" has potential matches:`, fallbackMatches);
-              console.log(`🔍 Event timezone-adjusted start time: ${adjustedStart.toISOString()}`);
+              console.log(`🔍 Event timezone-adjusted start time: ${adjustedStartForKey.toISOString()}`);
               console.log(`📅 Possible matches start times:`, fallbackMatches.map(key => key.split(':')[1]));
             }
             

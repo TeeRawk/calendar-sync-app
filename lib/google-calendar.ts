@@ -39,12 +39,11 @@ export async function getGoogleCalendarClient() {
     throw new Error('No Google account connected');
   }
 
-  // Check if we need to handle expired/missing tokens
-  const tokenExpired = account[0].expires_at && account[0].expires_at < Math.floor(Date.now() / 1000);
+  // Check if refresh token is missing - only delete account in this case
   const noRefreshToken = !account[0]?.refresh_token;
   
-  if (tokenExpired || noRefreshToken) {
-    // Delete the problematic account to force fresh authentication
+  if (noRefreshToken) {
+    // Delete the account only when there's no way to refresh the token
     await db
       .delete(accounts)
       .where(eq(accounts.userId, session.user.id));
@@ -57,13 +56,12 @@ export async function getGoogleCalendarClient() {
     refresh_token: account[0].refresh_token,
   });
 
-  // Try to refresh token if it's expired
-  if (account[0].expires_at && account[0].expires_at < Math.floor(Date.now() / 1000)) {
-    if (!account[0].refresh_token) {
-      throw new Error('No refresh token is set. Please go to https://myaccount.google.com/permissions, revoke Calendar Sync App access, then sign out and sign back in to re-authenticate with proper permissions.');
-    }
-    
+  // Check if token needs refresh and handle it
+  const tokenExpired = account[0].expires_at && account[0].expires_at < Math.floor(Date.now() / 1000);
+  
+  if (tokenExpired) {
     try {
+      console.log('🔄 Token expired, refreshing...');
       const { credentials } = await oauth2Client.refreshAccessToken();
       
       // Update database with new tokens
@@ -76,7 +74,14 @@ export async function getGoogleCalendarClient() {
         .where(eq(accounts.userId, session.user.id));
       
       oauth2Client.setCredentials(credentials);
+      console.log('✅ Token refreshed successfully');
     } catch (refreshError) {
+      console.error('❌ Token refresh failed:', refreshError);
+      // Delete account when refresh fails completely  
+      await db
+        .delete(accounts)
+        .where(eq(accounts.userId, session.user.id));
+      
       throw new Error('Google Calendar authentication expired. Please go to https://myaccount.google.com/permissions, revoke Calendar Sync App access, then sign out and sign back in to re-authenticate.');
     }
   }

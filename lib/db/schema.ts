@@ -15,6 +15,10 @@ export const users = pgTable('users', {
   email: text('email').notNull(),
   emailVerified: timestamp('emailVerified', { mode: 'date' }),
   image: text('image'),
+  // Added for admin and credential auth support
+  isAdmin: boolean('isAdmin').default(false).notNull(),
+  isDisabled: boolean('isDisabled').default(false).notNull(),
+  passwordHash: text('passwordHash'),
 });
 
 export const accounts = pgTable('accounts', {
@@ -70,4 +74,33 @@ export const syncLogs = pgTable('sync_logs', {
   duration: text('duration'),
   status: text('status').notNull(),
   createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+});
+
+// Event tracking table for duplicate resolution
+export const eventMappings = pgTable('event_mappings', {
+  id: text('id').primaryKey().default(sql`gen_random_uuid()::text`),
+  calendarSyncId: text('calendarSyncId').notNull().references(() => calendarSyncs.id, { onDelete: 'cascade' }),
+  sourceUid: text('sourceUid').notNull(), // Original ICS UID
+  googleEventId: text('googleEventId').notNull(), // Google Calendar event ID
+  eventTitle: text('eventTitle').notNull(),
+  eventTitleNormalized: text('eventTitleNormalized').notNull(), // Normalized for fuzzy matching
+  startDateTime: timestamp('startDateTime', { mode: 'date' }).notNull(),
+  endDateTime: timestamp('endDateTime', { mode: 'date' }).notNull(),
+  location: text('location'),
+  eventHash: text('eventHash').notNull(), // SHA-256 hash for quick comparison
+  fuzzyHash: text('fuzzyHash').notNull(), // Simplified hash for fuzzy matching
+  lastSyncedAt: timestamp('lastSyncedAt', { mode: 'date' }).defaultNow().notNull(),
+  createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+});
+
+// Duplicate resolution logs
+export const duplicateResolutions = pgTable('duplicate_resolutions', {
+  id: text('id').primaryKey().default(sql`gen_random_uuid()::text`),
+  calendarSyncId: text('calendarSyncId').notNull().references(() => calendarSyncs.id, { onDelete: 'cascade' }),
+  sourceEventId: text('sourceEventId').notNull(), // Reference to eventMappings
+  duplicateEventId: text('duplicateEventId').notNull(), // Reference to potential duplicate
+  matchType: text('matchType').notNull(), // 'exact', 'fuzzy', 'manual'
+  confidence: integer('confidence').notNull(), // 0-100
+  resolution: text('resolution').notNull(), // 'merged', 'kept_original', 'kept_duplicate', 'manual_review'
+  resolvedAt: timestamp('resolvedAt', { mode: 'date' }).defaultNow().notNull(),
 });

@@ -7,12 +7,20 @@ import {
   updateGoogleCalendarEvent,
   getExistingGoogleEvents,
 } from './google-calendar';
+import { 
+  createDuplicateResolver,
+  DuplicateResolutionResult,
+  mergeEventData,
+  DEFAULT_DUPLICATE_OPTIONS 
+} from './duplicate-resolution';
 
 export interface SyncResult {
   success: boolean;
   eventsProcessed: number;
   eventsCreated: number;
   eventsUpdated: number;
+  eventsSkipped: number;
+  duplicatesResolved: number;
   errors: string[];
   duration: number;
 }
@@ -24,6 +32,8 @@ export async function syncCalendar(calendarSyncId: string, userTimeZone?: string
     eventsProcessed: 0,
     eventsCreated: 0,
     eventsUpdated: 0,
+    eventsSkipped: 0,
+    duplicatesResolved: 0,
     errors: [],
     duration: 0,
   };
@@ -76,14 +86,15 @@ export async function syncCalendar(calendarSyncId: string, userTimeZone?: string
       return result;
     }
 
-    const existingEvents = await getExistingGoogleEvents(
-      config.googleCalendarId,
-      monthStart,
-      monthEnd
-    );
+    // Initialize duplicate resolver with optimized settings
+    const duplicateResolver = createDuplicateResolver({
+      ...DEFAULT_DUPLICATE_OPTIONS,
+      timeTolerance: 10, // 10 minutes tolerance for sync operations
+      confidenceThreshold: 0.75, // Lower threshold for better duplicate detection
+    });
 
     // Process events in parallel batches for better performance
-    console.log(`🔄 Processing ${uniqueEvents.length} events in batches...`);
+    console.log(`🔄 Processing ${uniqueEvents.length} events in batches with duplicate resolution...`);
     const BATCH_SIZE = 5; // Process 5 events at a time to avoid rate limits
     const eventBatches = [];
     
@@ -102,31 +113,55 @@ export async function syncCalendar(calendarSyncId: string, userTimeZone?: string
         try {
           console.log(`📝 Processing: "${event.summary}" (${event.sourceTimezone || 'Unknown timezone'})`);
           
-          // Create a copy without attendees and add original UID to description
+          // Create a copy and add original UID to description
           const eventCopy: CalendarEvent = {
             ...event,
             description: `${event.description || ''}\n\nOriginal UID: ${event.uid}`.trim(),
           };
 
-          // Create unique key combining UID and start datetime for recurring events
-          const uniqueKey = `${event.uid}:${event.start.toISOString()}`;
+          // Use advanced duplicate resolution
+          const duplicateResult = await duplicateResolver.findDuplicateMeeting(
+            eventCopy,
+            config.googleCalendarId,
+            monthStart,
+            monthEnd
+          );
 
-          if (existingEvents[uniqueKey]) {
+          console.log(`🎯 Duplicate analysis for "${event.summary}": ${duplicateResult.action} (confidence: ${Math.round(duplicateResult.confidence * 100)}%) - ${duplicateResult.reason}`);
+
+          if (duplicateResult.action === 'update' && duplicateResult.existingEventId) {
             // Update existing event
-            console.log(`🔄 Updating existing event: ${event.summary} (${uniqueKey})`);
+            console.log(`🔄 Updating existing event: ${event.summary} (ID: ${duplicateResult.existingEventId})`);
             await updateGoogleCalendarEvent(
               config.googleCalendarId,
-              existingEvents[uniqueKey],
+              duplicateResult.existingEventId,
               eventCopy,
               userTimeZone
             );
-            return { type: 'updated', event: event.summary };
+            return { 
+              type: 'updated', 
+              event: event.summary,
+              duplicateResolved: true,
+              confidence: duplicateResult.confidence
+            };
+          } else if (duplicateResult.action === 'skip') {
+            // Skip event
+            console.log(`⏭️ Skipping event: ${event.summary} - ${duplicateResult.reason}`);
+            return { 
+              type: 'skipped', 
+              event: event.summary,
+              reason: duplicateResult.reason
+            };
           } else {
             // Create new event
-            console.log(`➕ Creating new event: ${event.summary} (${uniqueKey}) in calendar ${config.googleCalendarId}`);
+            console.log(`➕ Creating new event: ${event.summary} in calendar ${config.googleCalendarId}`);
             const createdEventId = await createGoogleCalendarEvent(config.googleCalendarId, eventCopy, userTimeZone);
             console.log(`✅ Created event with ID: ${createdEventId}`);
-            return { type: 'created', event: event.summary };
+            return { 
+              type: 'created', 
+              event: event.summary,
+              eventId: createdEventId
+            };
           }
         } catch (error) {
           const errorMsg = `Failed to sync event "${event.summary}": ${
@@ -146,6 +181,11 @@ export async function syncCalendar(calendarSyncId: string, userTimeZone?: string
           result.eventsCreated++;
         } else if (batchResult.type === 'updated') {
           result.eventsUpdated++;
+          if ((batchResult as any).duplicateResolved) {
+            result.duplicatesResolved++;
+          }
+        } else if (batchResult.type === 'skipped') {
+          result.eventsSkipped++;
         } else if (batchResult.type === 'error') {
           result.errors.push(batchResult.error || 'Unknown error');
         }
@@ -188,7 +228,8 @@ export async function syncCalendar(calendarSyncId: string, userTimeZone?: string
 
 async function logSyncResult(calendarSyncId: string, result: SyncResult): Promise<void> {
   try {
-    await db.insert(syncLogs).values({
+    // Create enhanced log data with duplicate resolution metrics
+    const logData = {
       calendarSyncId,
       eventsProcessed: result.eventsProcessed.toString(),
       eventsCreated: result.eventsCreated.toString(),
@@ -196,7 +237,20 @@ async function logSyncResult(calendarSyncId: string, result: SyncResult): Promis
       errors: result.errors.length > 0 ? result.errors : null,
       duration: `${result.duration}ms`,
       status: result.success ? 'success' : 'error',
-    });
+    };
+
+    await db.insert(syncLogs).values(logData);
+
+    // Enhanced logging for duplicate resolution
+    if (result.duplicatesResolved > 0 || result.eventsSkipped > 0) {
+      console.log(`📊 Sync completed with duplicate resolution:`);
+      console.log(`  • Events processed: ${result.eventsProcessed}`);
+      console.log(`  • Events created: ${result.eventsCreated}`);
+      console.log(`  • Events updated: ${result.eventsUpdated}`);
+      console.log(`  • Duplicates resolved: ${result.duplicatesResolved}`);
+      console.log(`  • Events skipped: ${result.eventsSkipped}`);
+      console.log(`  • Duration: ${result.duration}ms`);
+    }
   } catch (error) {
     console.error('Failed to log sync result:', error);
   }

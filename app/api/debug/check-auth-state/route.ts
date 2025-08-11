@@ -5,7 +5,8 @@ export async function GET() {
   try {
     console.log('🔍 Checking current auth state in database');
     
-    const allUsers = await db.select().from(users);
+    // Select only stable columns to avoid issues if optional columns are not migrated yet
+    const allUsers = await db.select({ id: users.id, email: users.email, name: users.name }).from(users);
     const allAccounts = await db.select().from(accounts);
     const allSessions = await db.select().from(sessions);
     

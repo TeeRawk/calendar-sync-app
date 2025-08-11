@@ -147,3 +147,29 @@ Update your Google OAuth settings with the production domain and ensure all envi
 ## Support
 
 For issues or questions, please check the code comments or create an issue in the repository.
+
+## Admin Page
+
+An admin area is available at `/admin`:
+
+- Sign in with manual email/password (credentials provider)
+- Only users with `isAdmin=true` can sign in here
+- View all users
+- Disable/Enable users (disabled users cannot sign in by any method)
+
+### Seeding an admin password
+
+1. Ensure your `users` table has an admin user with `isAdmin=true`.
+2. Generate a bcrypt hash for the password:
+
+```bash
+node -e "(async()=>{const b=require('bcryptjs');const h=await b.hash(process.argv[1],10);console.log(h)})()" 'your-password'
+```
+
+3. Update the user record's `passwordHash` with the generated hash.
+
+### Notes
+
+- Google OAuth remains unchanged.
+- Credentials login is restricted to admins to keep scope minimal.
+- Middleware and callbacks block disabled users across providers.

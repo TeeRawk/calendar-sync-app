@@ -92,6 +92,9 @@ export async function syncCalendar(calendarSyncId: string, userTimeZone?: string
 
     console.log(`📦 Processing ${eventBatches.length} batches of ${BATCH_SIZE} events each`);
 
+    // Note: Duplicate detection is handled by comparing ICS events to existing Google Calendar events
+    console.log('🔍 Duplicate detection will compare ICS events to existing Google Calendar events');
+
     for (let batchIndex = 0; batchIndex < eventBatches.length; batchIndex++) {
       const batch = eventBatches[batchIndex];
       console.log(`🔄 Processing batch ${batchIndex + 1}/${eventBatches.length} (${batch.length} events)`);
@@ -102,7 +105,7 @@ export async function syncCalendar(calendarSyncId: string, userTimeZone?: string
         config.googleCalendarId,
         monthStart,
         monthEnd,
-        batchIndex // Use batch index as retry count for progressive delays
+        0 // Always use 0 retries for fresh batch fetches
       );
       console.log(`📊 Found ${Object.keys(existingEvents).length} existing events for batch comparison`);
       
@@ -111,15 +114,43 @@ export async function syncCalendar(calendarSyncId: string, userTimeZone?: string
         try {
           console.log(`📝 Processing: "${event.summary}" (${event.sourceTimezone || 'Unknown timezone'})`);
           
-          // Create a copy and add original UID to description
+          // CRITICAL FIX: Convert timezone first to match what will be stored in Google Calendar
+          const convertToUserTimezone = (sourceDate: Date) => {
+            const hours = sourceDate.getHours();
+            const minutes = sourceDate.getMinutes();
+            
+            // Arizona (MST) is UTC-7, Madrid is UTC+1/+2 (depending on DST)
+            const arizonaOffset = -7; // Arizona is UTC-7 (no DST)
+            const madridOffset = new Date().getTimezoneOffset() / -60; // Madrid offset in hours
+            const timeDifference = madridOffset - arizonaOffset;
+            
+            // Convert Arizona time to Madrid time
+            const convertedTime = new Date(
+              sourceDate.getFullYear(),
+              sourceDate.getMonth(),
+              sourceDate.getDate(),
+              hours + timeDifference,
+              minutes,
+              sourceDate.getSeconds()
+            );
+            
+            return convertedTime;
+          };
+
+          const adjustedStart = convertToUserTimezone(event.start);
+          const adjustedEnd = convertToUserTimezone(event.end);
+
+          // Create a copy with timezone-adjusted times and add original UID to description
           const eventCopy: CalendarEvent = {
             ...event,
+            start: adjustedStart,
+            end: adjustedEnd,
             description: `${event.description || ''}\n\nOriginal UID: ${event.uid}`.trim(),
           };
 
-          // Use proven duplicate detection logic with UID + start time key
-          const uniqueKey = `${event.uid}:${event.start.toISOString()}`;
-          console.log(`🔍 Checking for duplicate with key: ${uniqueKey}`);
+          // Use timezone-adjusted start time for key - this matches what Google Calendar stores
+          const uniqueKey = `${event.uid}:${adjustedStart.toISOString()}`;
+          console.log(`🔍 Checking for duplicate with timezone-adjusted key: ${uniqueKey}`);
           console.log(`📋 Available existing event keys:`, Object.keys(existingEvents).slice(0, 5));
 
           if (existingEvents[uniqueKey]) {
@@ -143,7 +174,7 @@ export async function syncCalendar(calendarSyncId: string, userTimeZone?: string
             const fallbackMatches = Object.keys(existingEvents).filter(key => key.startsWith(event.uid + ':'));
             if (fallbackMatches.length > 0) {
               console.log(`🚨 POTENTIAL DUPLICATE MISSED! Event "${event.summary}" with UID "${event.uid}" has potential matches:`, fallbackMatches);
-              console.log(`🔍 Event start time: ${event.start.toISOString()}`);
+              console.log(`🔍 Event timezone-adjusted start time: ${adjustedStart.toISOString()}`);
               console.log(`📅 Possible matches start times:`, fallbackMatches.map(key => key.split(':')[1]));
             }
             

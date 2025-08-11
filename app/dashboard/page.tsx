@@ -58,6 +58,9 @@ function DashboardContent() {
       const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
       console.log(`🌍 Sending user timezone: ${userTimeZone}`);
       
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minute timeout
+      
       const response = await fetch(`/api/syncs/${syncId}/sync`, {
         method: 'POST',
         headers: {
@@ -66,12 +69,28 @@ function DashboardContent() {
         body: JSON.stringify({
           timeZone: userTimeZone,
         }),
+        signal: controller.signal,
       });
+      
+      clearTimeout(timeoutId);
+      
       if (response.ok) {
+        const result = await response.json();
+        console.log('🎉 Sync completed:', result);
         await fetchSyncs();
+      } else {
+        const errorData = await response.json();
+        console.error('❌ Sync failed:', errorData);
+        alert(`Sync failed: ${errorData.error || 'Unknown error'}`);
       }
     } catch (error) {
-      console.error('Sync failed:', error);
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.error('⏰ Sync timeout after 5 minutes');
+        alert('Sync is taking longer than expected. Please check back in a few minutes.');
+      } else {
+        console.error('Sync failed:', error);
+        alert('Sync failed. Please try again.');
+      }
     } finally {
       setSyncing(null);
     }

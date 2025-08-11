@@ -17,7 +17,7 @@
       "maxDuration": 60
     },
     "app/api/syncs/[syncId]/sync/route.ts": {
-      "maxDuration": 60
+      "maxDuration": 300
     }
   },
   "headers": [

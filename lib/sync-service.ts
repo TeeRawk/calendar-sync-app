@@ -82,44 +82,80 @@ export async function syncCalendar(calendarSyncId: string, userTimeZone?: string
       monthEnd
     );
 
-    // Process each event
-    console.log(`🔄 Processing ${uniqueEvents.length} events...`);
-    for (const event of uniqueEvents) {
-      try {
-        console.log(`📝 Processing: "${event.summary}" (${event.sourceTimezone || 'Unknown timezone'})`);
-        
-        // Create a copy without attendees and add original UID to description
-        const eventCopy: CalendarEvent = {
-          ...event,
-          description: `${event.description || ''}\n\nOriginal UID: ${event.uid}`.trim(),
-        };
+    // Process events in parallel batches for better performance
+    console.log(`🔄 Processing ${uniqueEvents.length} events in batches...`);
+    const BATCH_SIZE = 5; // Process 5 events at a time to avoid rate limits
+    const eventBatches = [];
+    
+    for (let i = 0; i < uniqueEvents.length; i += BATCH_SIZE) {
+      eventBatches.push(uniqueEvents.slice(i, i + BATCH_SIZE));
+    }
 
-        // Create unique key combining UID and start datetime for recurring events
-        const uniqueKey = `${event.uid}:${event.start.toISOString()}`;
+    console.log(`📦 Processing ${eventBatches.length} batches of ${BATCH_SIZE} events each`);
 
-        if (existingEvents[uniqueKey]) {
-          // Update existing event
-          console.log(`🔄 Updating existing event: ${event.summary} (${uniqueKey})`);
-          await updateGoogleCalendarEvent(
-            config.googleCalendarId,
-            existingEvents[uniqueKey],
-            eventCopy,
-            userTimeZone
-          );
-          result.eventsUpdated++;
-        } else {
-          // Create new event
-          console.log(`➕ Creating new event: ${event.summary} (${uniqueKey}) in calendar ${config.googleCalendarId}`);
-          const createdEventId = await createGoogleCalendarEvent(config.googleCalendarId, eventCopy, userTimeZone);
-          console.log(`✅ Created event with ID: ${createdEventId}`);
-          result.eventsCreated++;
+    for (let batchIndex = 0; batchIndex < eventBatches.length; batchIndex++) {
+      const batch = eventBatches[batchIndex];
+      console.log(`🔄 Processing batch ${batchIndex + 1}/${eventBatches.length} (${batch.length} events)`);
+      
+      // Process batch in parallel
+      const batchPromises = batch.map(async (event) => {
+        try {
+          console.log(`📝 Processing: "${event.summary}" (${event.sourceTimezone || 'Unknown timezone'})`);
+          
+          // Create a copy without attendees and add original UID to description
+          const eventCopy: CalendarEvent = {
+            ...event,
+            description: `${event.description || ''}\n\nOriginal UID: ${event.uid}`.trim(),
+          };
+
+          // Create unique key combining UID and start datetime for recurring events
+          const uniqueKey = `${event.uid}:${event.start.toISOString()}`;
+
+          if (existingEvents[uniqueKey]) {
+            // Update existing event
+            console.log(`🔄 Updating existing event: ${event.summary} (${uniqueKey})`);
+            await updateGoogleCalendarEvent(
+              config.googleCalendarId,
+              existingEvents[uniqueKey],
+              eventCopy,
+              userTimeZone
+            );
+            return { type: 'updated', event: event.summary };
+          } else {
+            // Create new event
+            console.log(`➕ Creating new event: ${event.summary} (${uniqueKey}) in calendar ${config.googleCalendarId}`);
+            const createdEventId = await createGoogleCalendarEvent(config.googleCalendarId, eventCopy, userTimeZone);
+            console.log(`✅ Created event with ID: ${createdEventId}`);
+            return { type: 'created', event: event.summary };
+          }
+        } catch (error) {
+          const errorMsg = `Failed to sync event "${event.summary}": ${
+            error instanceof Error ? error.message : 'Unknown error'
+          }`;
+          console.error(`❌ Error syncing event:`, error);
+          return { type: 'error' as const, event: event.summary, error: errorMsg };
         }
-      } catch (error) {
-        const errorMsg = `Failed to sync event "${event.summary}": ${
-          error instanceof Error ? error.message : 'Unknown error'
-        }`;
-        console.error(`❌ Error syncing event:`, error);
-        result.errors.push(errorMsg);
+      });
+
+      // Wait for batch to complete
+      const batchResults = await Promise.all(batchPromises);
+      
+      // Update counters
+      batchResults.forEach(batchResult => {
+        if (batchResult.type === 'created') {
+          result.eventsCreated++;
+        } else if (batchResult.type === 'updated') {
+          result.eventsUpdated++;
+        } else if (batchResult.type === 'error') {
+          result.errors.push(batchResult.error || 'Unknown error');
+        }
+      });
+
+      console.log(`✅ Batch ${batchIndex + 1} complete: ${batchResults.length} events processed`);
+      
+      // Add small delay between batches to avoid rate limiting
+      if (batchIndex < eventBatches.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
     }
 

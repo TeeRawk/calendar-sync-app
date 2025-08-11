@@ -312,7 +312,25 @@ export async function updateGoogleCalendarEvent(
     };
     
     const convertToUserTimezone = (sourceDate: Date) => {
-      return sourceDate; // Keep original for now
+      const hours = sourceDate.getHours();
+      const minutes = sourceDate.getMinutes();
+      
+      // Arizona (MST) is UTC-7, Madrid is UTC+1/+2 (depending on DST)
+      const arizonaOffset = -7; // Arizona is UTC-7 (no DST)
+      const madridOffset = new Date().getTimezoneOffset() / -60; // Madrid offset in hours
+      const timeDifference = madridOffset - arizonaOffset;
+      
+      // Convert Arizona time to Madrid time
+      const convertedTime = new Date(
+        sourceDate.getFullYear(),
+        sourceDate.getMonth(),
+        sourceDate.getDate(),
+        hours + timeDifference,
+        minutes,
+        sourceDate.getSeconds()
+      );
+      
+      return convertedTime;
     };
     
     const adjustedStart = convertToUserTimezone(event.start);

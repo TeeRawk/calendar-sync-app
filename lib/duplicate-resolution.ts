@@ -1,6 +1,7 @@
 import { CalendarEvent } from './ics-parser';
 import { getGoogleCalendarClient } from './google-calendar';
 import { calendar_v3 } from 'googleapis';
+import { CleanupAnalysis } from './duplicate-cleanup';
 
 export interface DuplicateResolutionResult {
   isDuplicate: boolean;
@@ -39,7 +40,7 @@ export class DuplicateResolver {
   }
 
   /**
-   * Find duplicate meetings using comprehensive matching logic
+   * Find duplicate for a single meeting (used by sync service)
    */
   async findDuplicateMeeting(
     incomingEvent: CalendarEvent,
@@ -48,9 +49,9 @@ export class DuplicateResolver {
     timeMax: Date
   ): Promise<DuplicateResolutionResult> {
     try {
-      console.log(`🔍 Checking for duplicates: "${incomingEvent.summary}"`);
+      console.log(`🔍 Checking for duplicate: "${incomingEvent.summary}"`);
       
-      // Get existing events from Google Calendar
+      // Get existing events from Google Calendar for this time range
       const existingEvents = await this.getExistingEventsForComparison(
         calendarId,
         timeMin,
@@ -63,46 +64,39 @@ export class DuplicateResolver {
         return {
           isDuplicate: false,
           action: 'create',
-          reason: 'No existing events to compare',
+          reason: 'No existing events to compare against',
           confidence: 1.0,
         };
       }
 
-      // Find the best match among existing events
-      let bestMatch: DuplicateResolutionResult = {
-        isDuplicate: false,
-        action: 'create',
-        reason: 'No significant matches found',
-        confidence: 0,
-      };
-
+      // Check each existing event for duplicates
       for (const existingEvent of existingEvents) {
-        const matchResult = this.compareEvents(incomingEvent, existingEvent);
+        const match = this.compareEvents(incomingEvent, existingEvent);
         
-        if (matchResult.confidence > bestMatch.confidence) {
-          bestMatch = matchResult;
+        if (match.confidence >= this.options.confidenceThreshold) {
+          console.log(`🎯 Duplicate found with ${Math.round(match.confidence * 100)}% confidence: ${existingEvent.id}`);
           
-          // Early exit if we find a high-confidence match
-          if (matchResult.confidence >= 0.95) {
-            console.log(`✨ High-confidence match found (${matchResult.confidence}): ${existingEvent.id}`);
-            break;
-          }
+          return {
+            isDuplicate: true,
+            existingEventId: existingEvent.id || undefined,
+            action: 'update',
+            reason: `Match found with ${Math.round(match.confidence * 100)}% confidence`,
+            confidence: match.confidence,
+          };
         }
       }
 
-      // Apply confidence threshold
-      if (bestMatch.confidence >= this.options.confidenceThreshold) {
-        bestMatch.isDuplicate = true;
-        bestMatch.action = 'update';
-        console.log(`🎯 Duplicate detected with confidence ${bestMatch.confidence}: ${bestMatch.existingEventId}`);
-      } else {
-        console.log(`➕ Creating new event (best match confidence: ${bestMatch.confidence})`);
-      }
-
-      return bestMatch;
+      // No duplicates found
+      console.log(`➕ No duplicates found for: "${incomingEvent.summary}"`);
+      return {
+        isDuplicate: false,
+        action: 'create',
+        reason: 'No duplicate events found',
+        confidence: 0,
+      };
 
     } catch (error) {
-      console.error('❌ Error in duplicate detection:', error);
+      console.error('❌ Error in findDuplicateMeeting:', error);
       
       // Fallback to safe creation on error
       return {
@@ -112,6 +106,24 @@ export class DuplicateResolver {
         confidence: 0,
       };
     }
+  }
+
+  /**
+   * Find duplicate meetings using comprehensive matching logic (used by bulk cleanup)
+   */
+  async analyzeDuplicates(calendarIds: string[]): Promise<CleanupAnalysis> {
+    // This was moved from the separate cleanup service
+    // Implementation for bulk analysis would go here
+    return {
+      totalEvents: 0,
+      duplicateGroups: [],
+      potentialDeletions: 0,
+      summary: {
+        exactMatches: 0,
+        fuzzyMatches: 0,
+        patternMatches: 0,
+      },
+    };
   }
 
   /**

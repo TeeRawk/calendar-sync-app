@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useSession, signIn, signOut } from 'next-auth/react';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { DuplicateCleanup } from '@/components/admin/DuplicateCleanup';
 
 interface UserRow {
   id: string;
@@ -125,40 +127,53 @@ export default function AdminPage() {
           <div className="bg-red-50 text-red-700 border border-red-200 px-4 py-2 rounded-md">{error}</div>
         )}
 
-        <div className="bg-white border rounded-xl overflow-hidden">
-          <div className="grid grid-cols-12 gap-0 font-medium text-sm bg-gray-50 border-b px-4 py-2">
-            <div className="col-span-4">User</div>
-            <div className="col-span-3">Email</div>
-            <div className="col-span-2">Admin</div>
-            <div className="col-span-2">Disabled</div>
-            <div className="col-span-1 text-right">Actions</div>
-          </div>
-          <div>
-            {loading ? (
-              <div className="p-4">Loading users...</div>
-            ) : users.length === 0 ? (
-              <div className="p-4 text-gray-600">No users found.</div>
-            ) : (
-              users.map(u => (
-                <div key={u.id} className="grid grid-cols-12 items-center px-4 py-3 border-b last:border-0">
-                  <div className="col-span-4 truncate">{u.name || '—'}</div>
-                  <div className="col-span-3 truncate">{u.email}</div>
-                  <div className="col-span-2">{u.isAdmin ? 'Yes' : 'No'}</div>
-                  <div className="col-span-2">{u.isDisabled ? 'Yes' : 'No'}</div>
-                  <div className="col-span-1 text-right">
-                    <Button
-                      size="sm"
-                      variant={u.isDisabled ? 'secondary' : 'outline'}
-                      onClick={() => toggleDisabled(u.id, !u.isDisabled)}
-                    >
-                      {u.isDisabled ? 'Enable' : 'Disable'}
-                    </Button>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
+        <Tabs defaultValue="users" className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="users">User Management</TabsTrigger>
+            <TabsTrigger value="cleanup">Duplicate Cleanup</TabsTrigger>
+          </TabsList>
+          
+          <TabsContent value="users" className="space-y-4">
+            <div className="bg-white border rounded-xl overflow-hidden">
+              <div className="grid grid-cols-12 gap-0 font-medium text-sm bg-gray-50 border-b px-4 py-2">
+                <div className="col-span-4">User</div>
+                <div className="col-span-3">Email</div>
+                <div className="col-span-2">Admin</div>
+                <div className="col-span-2">Disabled</div>
+                <div className="col-span-1 text-right">Actions</div>
+              </div>
+              <div>
+                {loading ? (
+                  <div className="p-4">Loading users...</div>
+                ) : users.length === 0 ? (
+                  <div className="p-4 text-gray-600">No users found.</div>
+                ) : (
+                  users.map(u => (
+                    <div key={u.id} className="grid grid-cols-12 items-center px-4 py-3 border-b last:border-0">
+                      <div className="col-span-4 truncate">{u.name || '—'}</div>
+                      <div className="col-span-3 truncate">{u.email}</div>
+                      <div className="col-span-2">{u.isAdmin ? 'Yes' : 'No'}</div>
+                      <div className="col-span-2">{u.isDisabled ? 'Yes' : 'No'}</div>
+                      <div className="col-span-1 text-right">
+                        <Button
+                          size="sm"
+                          variant={u.isDisabled ? 'secondary' : 'outline'}
+                          onClick={() => toggleDisabled(u.id, !u.isDisabled)}
+                        >
+                          {u.isDisabled ? 'Enable' : 'Disable'}
+                        </Button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </TabsContent>
+          
+          <TabsContent value="cleanup">
+            <DuplicateCleanup />
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );

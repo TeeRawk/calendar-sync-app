@@ -7,12 +7,7 @@ import {
   updateGoogleCalendarEvent,
   getExistingGoogleEvents,
 } from './google-calendar';
-import { 
-  createDuplicateResolver,
-  DuplicateResolutionResult,
-  mergeEventData,
-  DEFAULT_DUPLICATE_OPTIONS 
-} from './duplicate-resolution';
+// Duplicate resolution logic is now inline using proven UID + timestamp approach
 
 export interface SyncResult {
   success: boolean;
@@ -86,12 +81,13 @@ export async function syncCalendar(calendarSyncId: string, userTimeZone?: string
       return result;
     }
 
-    // Initialize duplicate resolver with optimized settings
-    const duplicateResolver = createDuplicateResolver({
-      ...DEFAULT_DUPLICATE_OPTIONS,
-      timeTolerance: 10, // 10 minutes tolerance for sync operations
-      confidenceThreshold: 0.75, // Lower threshold for better duplicate detection
-    });
+    // Get existing events for duplicate checking (use the proven approach)
+    console.log(`🔍 Fetching existing events from Google Calendar for duplicate detection...`);
+    const existingEvents = await getExistingGoogleEvents(
+      config.googleCalendarId,
+      monthStart,
+      monthEnd
+    );
 
     // Process events in parallel batches for better performance
     console.log(`🔄 Processing ${uniqueEvents.length} events in batches with duplicate resolution...`);
@@ -119,22 +115,17 @@ export async function syncCalendar(calendarSyncId: string, userTimeZone?: string
             description: `${event.description || ''}\n\nOriginal UID: ${event.uid}`.trim(),
           };
 
-          // Use advanced duplicate resolution
-          const duplicateResult = await duplicateResolver.findDuplicateMeeting(
-            eventCopy,
-            config.googleCalendarId,
-            monthStart,
-            monthEnd
-          );
+          // Use proven duplicate detection logic with UID + start time key
+          const uniqueKey = `${event.uid}:${event.start.toISOString()}`;
+          console.log(`🔍 Checking for duplicate with key: ${uniqueKey}`);
 
-          console.log(`🎯 Duplicate analysis for "${event.summary}": ${duplicateResult.action} (confidence: ${Math.round(duplicateResult.confidence * 100)}%) - ${duplicateResult.reason}`);
-
-          if (duplicateResult.action === 'update' && duplicateResult.existingEventId) {
+          if (existingEvents[uniqueKey]) {
             // Update existing event
-            console.log(`🔄 Updating existing event: ${event.summary} (ID: ${duplicateResult.existingEventId})`);
+            const existingEventId = existingEvents[uniqueKey];
+            console.log(`🔄 Updating existing event: ${event.summary} (ID: ${existingEventId})`);
             await updateGoogleCalendarEvent(
               config.googleCalendarId,
-              duplicateResult.existingEventId,
+              existingEventId,
               eventCopy,
               userTimeZone
             );
@@ -142,15 +133,7 @@ export async function syncCalendar(calendarSyncId: string, userTimeZone?: string
               type: 'updated', 
               event: event.summary,
               duplicateResolved: true,
-              confidence: duplicateResult.confidence
-            };
-          } else if (duplicateResult.action === 'skip') {
-            // Skip event
-            console.log(`⏭️ Skipping event: ${event.summary} - ${duplicateResult.reason}`);
-            return { 
-              type: 'skipped', 
-              event: event.summary,
-              reason: duplicateResult.reason
+              existingEventId: existingEventId
             };
           } else {
             // Create new event

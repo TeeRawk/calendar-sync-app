@@ -118,6 +118,7 @@ export async function syncCalendar(calendarSyncId: string, userTimeZone?: string
           // Use proven duplicate detection logic with UID + start time key
           const uniqueKey = `${event.uid}:${event.start.toISOString()}`;
           console.log(`🔍 Checking for duplicate with key: ${uniqueKey}`);
+          console.log(`📋 Available existing event keys:`, Object.keys(existingEvents).slice(0, 5));
 
           if (existingEvents[uniqueKey]) {
             // Update existing event
@@ -136,6 +137,14 @@ export async function syncCalendar(calendarSyncId: string, userTimeZone?: string
               existingEventId: existingEventId
             };
           } else {
+            // Fallback: Try to find a close match by UID only (for debugging)
+            const fallbackMatches = Object.keys(existingEvents).filter(key => key.startsWith(event.uid + ':'));
+            if (fallbackMatches.length > 0) {
+              console.log(`🚨 POTENTIAL DUPLICATE MISSED! Event "${event.summary}" with UID "${event.uid}" has potential matches:`, fallbackMatches);
+              console.log(`🔍 Event start time: ${event.start.toISOString()}`);
+              console.log(`📅 Possible matches start times:`, fallbackMatches.map(key => key.split(':')[1]));
+            }
+            
             // Create new event
             console.log(`➕ Creating new event: ${event.summary} in calendar ${config.googleCalendarId}`);
             const createdEventId = await createGoogleCalendarEvent(config.googleCalendarId, eventCopy, userTimeZone);

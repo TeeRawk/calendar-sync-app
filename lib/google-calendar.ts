@@ -374,12 +374,16 @@ export async function getExistingGoogleEvents(
         const match = event.description.match(/Original UID: (.+)/);
         if (match) {
           // Create unique key combining UID and start datetime for recurring events
-          const originalUid = match[1];
+          const originalUid = match[1].trim(); // Trim whitespace
           const startDateTime = new Date(event.start.dateTime).toISOString();
           const uniqueKey = `${originalUid}:${startDateTime}`;
           console.log(`✅ Found existing event: ${uniqueKey} -> Google Event ID: ${event.id}`);
           existingEvents[uniqueKey] = event.id;
+        } else {
+          console.log(`⚠️  Event "${event.summary}" has no Original UID pattern in description`);
         }
+      } else {
+        console.log(`⚠️  Skipping event "${event.summary}" - missing required fields (ID: ${!!event.id}, Description: ${!!event.description}, DateTime: ${!!event.start?.dateTime})`);
       }
     });
 

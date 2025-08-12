@@ -44,6 +44,31 @@ export async function POST(
     return Response.json(result);
   } catch (error) {
     console.error('Manual sync failed:', error);
+    
+    // Handle authentication errors specifically
+    if (error instanceof Error && error.message === 'REAUTH_REQUIRED') {
+      return Response.json(
+        { 
+          success: false, 
+          error: 'Your Google Calendar connection has expired. Please sign out and sign back in to reconnect your calendar.',
+          needsReauth: true
+        },
+        { status: 401 }
+      );
+    }
+    
+    // Handle other authentication-related errors
+    if (error instanceof Error && error.message.includes('Token refresh failed')) {
+      return Response.json(
+        { 
+          success: false, 
+          error: 'Google Calendar authentication failed. Please try signing out and signing back in.',
+          needsReauth: true
+        },
+        { status: 401 }
+      );
+    }
+    
     return Response.json(
       { 
         success: false, 

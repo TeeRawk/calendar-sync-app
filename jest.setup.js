@@ -63,6 +63,8 @@ process.env.GOOGLE_CLIENT_ID = 'test-google-client-id'
 process.env.GOOGLE_CLIENT_SECRET = 'test-google-client-secret'
 process.env.NEXTAUTH_SECRET = 'test-nextauth-secret'
 process.env.NEXTAUTH_URL = 'http://localhost:3000'
+process.env.POSTGRES_URL = 'postgres://test:test@localhost:5432/testdb'
+process.env.DATABASE_URL = 'postgres://test:test@localhost:5432/testdb'
 
 // Mock fetch with better error handling
 global.fetch = jest.fn(() => 
@@ -125,6 +127,35 @@ process.env.NEXT_PUBLIC_APP_URL = 'http://localhost:3000'
 
 // Extended timeout for integration and e2e tests
 jest.setTimeout(30000)
+
+// Mock Web APIs Response for API routes
+global.Response = class MockResponse {
+  constructor(body, init = {}) {
+    this.body = body
+    this.status = init.status || 200
+    this.statusText = init.statusText || 'OK'
+    this.headers = new Map(Object.entries(init.headers || {}))
+    this.ok = this.status >= 200 && this.status < 300
+  }
+  
+  static json(data, init = {}) {
+    return new MockResponse(JSON.stringify(data), {
+      ...init,
+      headers: {
+        'Content-Type': 'application/json',
+        ...init.headers
+      }
+    })
+  }
+  
+  async json() {
+    return JSON.parse(this.body || '{}')
+  }
+  
+  async text() {
+    return this.body || ''
+  }
+}
 
 // Global test utilities
 global.testUtils = {

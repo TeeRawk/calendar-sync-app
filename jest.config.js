@@ -35,7 +35,7 @@ const customJestConfig = {
     '<rootDir>/node_modules/',
   ],
   transformIgnorePatterns: [
-    'node_modules/(?!(uuid|@auth|@radix-ui|lucide-react|googleapis)/)',
+    'node_modules/(?!(uuid|@auth|@radix-ui|lucide-react|googleapis|openid-client|jose)/)',
   ],
   moduleDirectories: ['node_modules', '<rootDir>/'],
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json'],

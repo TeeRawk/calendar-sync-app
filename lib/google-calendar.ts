@@ -29,21 +29,34 @@ export async function getGoogleCalendarClient() {
   const { accounts } = await import('./db/schema');
   const { eq } = await import('drizzle-orm');
 
-  const account = await db
+  let account = await db
     .select()
     .from(accounts)
     .where(eq(accounts.userId, session.user.id))
     .limit(1);
 
-  if (!account[0]?.access_token) {
-    throw new Error('No Google account connected');
+  if (!account[0]) {
+    console.error('❌ No Google account found in database for user:', session.user.id);
+    throw new Error('REAUTH_REQUIRED');
   }
 
-  // Check if refresh token is missing - only delete account in this case
-  const noRefreshToken = !account[0]?.refresh_token;
-  
-  if (noRefreshToken) {
-    // Delete the account only when there's no way to refresh the token
+  const accountData = account[0];
+  console.log('🔍 Account validation:', {
+    hasAccessToken: !!accountData.access_token,
+    hasRefreshToken: !!accountData.refresh_token,
+    expiresAt: accountData.expires_at,
+    currentTime: Math.floor(Date.now() / 1000),
+    isExpired: accountData.expires_at ? accountData.expires_at < Math.floor(Date.now() / 1000) : 'unknown'
+  });
+
+  // Check if we have minimum required tokens
+  if (!accountData.access_token || !accountData.refresh_token) {
+    console.error('❌ Missing essential tokens:', {
+      accessToken: !!accountData.access_token,
+      refreshToken: !!accountData.refresh_token
+    });
+    
+    // Clean up invalid account record
     await db
       .delete(accounts)
       .where(eq(accounts.userId, session.user.id));
@@ -51,53 +64,131 @@ export async function getGoogleCalendarClient() {
     throw new Error('REAUTH_REQUIRED');
   }
 
+  // Set initial credentials
   oauth2Client.setCredentials({
-    access_token: account[0].access_token,
-    refresh_token: account[0].refresh_token,
+    access_token: accountData.access_token,
+    refresh_token: accountData.refresh_token,
   });
 
-  // Check if token needs refresh and handle it
-  const tokenExpired = account[0].expires_at && account[0].expires_at < Math.floor(Date.now() / 1000);
+  // Determine if we need to refresh the token
+  const now = Math.floor(Date.now() / 1000);
+  const tokenExpired = accountData.expires_at ? accountData.expires_at <= now + 300 : true; // Refresh 5 mins early
   
-  if (tokenExpired) {
+  if (tokenExpired || !accountData.access_token) {
+    console.log('🔄 Token requires refresh:', {
+      expired: tokenExpired,
+      expiresAt: accountData.expires_at,
+      currentTime: now,
+      bufferTime: now + 300
+    });
+    
     try {
-      console.log('🔄 Token expired, refreshing...');
       const { credentials } = await oauth2Client.refreshAccessToken();
+      console.log('🔄 Refresh response:', {
+        hasNewAccessToken: !!credentials.access_token,
+        hasNewRefreshToken: !!credentials.refresh_token,
+        newExpiryDate: credentials.expiry_date
+      });
       
-      // Update database with new tokens
+      if (!credentials.access_token) {
+        throw new Error('No access token received from refresh');
+      }
+
+      // Update database with new tokens - preserve refresh token if not provided
+      const updateData: any = {
+        access_token: credentials.access_token,
+        expires_at: credentials.expiry_date ? Math.floor(credentials.expiry_date / 1000) : null,
+      };
+      
+      // Only update refresh token if we got a new one
+      if (credentials.refresh_token) {
+        updateData.refresh_token = credentials.refresh_token;
+      }
+      
       await db
         .update(accounts)
-        .set({
-          access_token: credentials.access_token,
-          expires_at: credentials.expiry_date ? Math.floor(credentials.expiry_date / 1000) : null,
-        })
+        .set(updateData)
         .where(eq(accounts.userId, session.user.id));
       
-      oauth2Client.setCredentials(credentials);
-      console.log('✅ Token refreshed successfully');
-    } catch (refreshError) {
-      console.error('❌ Token refresh failed:', refreshError);
-      // Delete account when refresh fails completely  
-      await db
-        .delete(accounts)
-        .where(eq(accounts.userId, session.user.id));
+      // Update oauth2Client with new credentials
+      oauth2Client.setCredentials({
+        access_token: credentials.access_token,
+        refresh_token: credentials.refresh_token || accountData.refresh_token, // Keep original if no new one
+      });
       
-      throw new Error('Google Calendar authentication expired. Please go to https://myaccount.google.com/permissions, revoke Calendar Sync App access, then sign out and sign back in to re-authenticate.');
+      console.log('✅ Token refreshed and stored successfully');
+      
+      // Verify the refresh worked by re-fetching account data
+      account = await db
+        .select()
+        .from(accounts)
+        .where(eq(accounts.userId, session.user.id))
+        .limit(1);
+        
+      console.log('✅ Post-refresh verification:', {
+        hasAccessToken: !!account[0]?.access_token,
+        hasRefreshToken: !!account[0]?.refresh_token,
+        newExpiresAt: account[0]?.expires_at
+      });
+      
+    } catch (refreshError: any) {
+      console.error('❌ Token refresh failed:', {
+        error: refreshError.message,
+        code: refreshError.code,
+        status: refreshError.status,
+        response: refreshError.response?.data
+      });
+      
+      // Handle specific refresh token errors
+      if (refreshError.message?.includes('invalid_grant') || 
+          refreshError.code === 400 || 
+          refreshError.response?.data?.error === 'invalid_grant') {
+        console.error('❌ Refresh token is invalid or expired');
+        
+        // Clean up invalid account
+        await db
+          .delete(accounts)
+          .where(eq(accounts.userId, session.user.id));
+        
+        throw new Error('REAUTH_REQUIRED');
+      }
+      
+      // For other errors, provide specific guidance
+      throw new Error(`Token refresh failed: ${refreshError.message}. Please sign out and sign back in to re-authenticate.`);
     }
   }
 
   // Set up automatic token refresh for future requests
   oauth2Client.on('tokens', async (tokens) => {
+    console.log('🔄 Auto-refresh triggered:', {
+      hasAccessToken: !!tokens.access_token,
+      hasRefreshToken: !!tokens.refresh_token,
+      expiryDate: tokens.expiry_date
+    });
+    
     if (tokens.access_token) {
-      await db
-        .update(accounts)
-        .set({
-          access_token: tokens.access_token,
-          expires_at: tokens.expiry_date ? Math.floor(tokens.expiry_date / 1000) : null,
-        })
-        .where(eq(accounts.userId, session.user.id));
+      const updateData: any = {
+        access_token: tokens.access_token,
+        expires_at: tokens.expiry_date ? Math.floor(tokens.expiry_date / 1000) : null,
+      };
+      
+      // Update refresh token if provided
+      if (tokens.refresh_token) {
+        updateData.refresh_token = tokens.refresh_token;
+      }
+      
+      try {
+        await db
+          .update(accounts)
+          .set(updateData)
+          .where(eq(accounts.userId, session.user.id));
+        console.log('✅ Auto-refresh tokens stored successfully');
+      } catch (error) {
+        console.error('❌ Failed to store auto-refreshed tokens:', error);
+      }
     }
   });
+  
   return google.calendar({ version: 'v3', auth: oauth2Client });
 }
 
@@ -114,10 +205,20 @@ export async function getUserCalendars(): Promise<GoogleCalendarInfo[]> {
       accessRole: cal.accessRole!,
     })) || [];
   } catch (error: any) {
+    console.error('❌ getUserCalendars error:', error);
     
-    // Handle authentication errors specifically
-    if (error.code === 401 || error.status === 401) {
+    // Handle specific authentication and reauth errors
+    if (error.message === 'REAUTH_REQUIRED') {
+      throw new Error('Your Google Calendar connection has expired. Please sign out and sign back in to reconnect your calendar.');
+    }
+    
+    if (error.code === 401 || error.status === 401 || error.message?.includes('authentication')) {
       throw new Error('Google Calendar authentication expired. Please sign out and sign back in to re-authenticate.');
+    }
+    
+    // Handle token refresh specific errors
+    if (error.message?.includes('Token refresh failed') || error.message?.includes('invalid_grant')) {
+      throw new Error('Your Google Calendar connection needs to be refreshed. Please sign out and sign back in to reconnect.');
     }
     
     throw new Error(`Failed to fetch calendars: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -419,9 +520,18 @@ export async function getExistingGoogleEvents(
   } catch (error: any) {
     console.error(`❌ Error fetching existing events:`, error);
     
-    // Handle authentication errors specifically
-    if (error.code === 401 || error.status === 401) {
+    // Handle specific authentication and reauth errors
+    if (error.message === 'REAUTH_REQUIRED') {
+      throw new Error('Your Google Calendar connection has expired. Please sign out and sign back in to reconnect your calendar.');
+    }
+    
+    if (error.code === 401 || error.status === 401 || error.message?.includes('authentication')) {
       throw new Error('Google Calendar authentication expired. Please sign out and sign back in to re-authenticate.');
+    }
+    
+    // Handle token refresh specific errors
+    if (error.message?.includes('Token refresh failed') || error.message?.includes('invalid_grant')) {
+      throw new Error('Your Google Calendar connection needs to be refreshed. Please sign out and sign back in to reconnect.');
     }
     
     throw new Error(`Failed to fetch existing events: ${error instanceof Error ? error.message : 'Unknown error'}`);

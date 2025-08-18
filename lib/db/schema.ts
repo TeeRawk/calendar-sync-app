@@ -58,6 +58,8 @@ export const calendarSyncs = pgTable('calendar_syncs', {
   icsUrl: text('icsUrl').notNull(),
   googleCalendarId: text('googleCalendarId').notNull(),
   isActive: boolean('isActive').default(true).notNull(),
+  syncType: text('syncType').default('full').notNull(), // 'full' or 'busy_free'
+  privacyLevel: text('privacyLevel').default('busy_only'), // 'busy_only', 'show_free_busy', 'full_details'
   lastSync: timestamp('lastSync', { mode: 'date' }),
   syncErrors: jsonb('syncErrors'),
   createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
@@ -153,4 +155,21 @@ export const deletedEvents = pgTable('deleted_events', {
   canRestore: boolean('canRestore').default(true),
   restoredAt: timestamp('restoredAt', { mode: 'date' }),
   deletedAt: timestamp('deletedAt', { mode: 'date' }).defaultNow().notNull(),
+});
+
+// Busy/Free calendar sync tracking
+export const busyFreeSyncs = pgTable('busy_free_syncs', {
+  id: text('id').primaryKey().default(sql`gen_random_uuid()::text`),
+  calendarSyncId: text('calendarSyncId').notNull().references(() => calendarSyncs.id, { onDelete: 'cascade' }),
+  sourceUid: text('sourceUid').notNull(), // Original ICS UID from busy/free calendar
+  googleEventId: text('googleEventId').notNull(), // Google Calendar event ID
+  busyFreeStatus: text('busyFreeStatus').notNull(), // 'busy', 'free'
+  transparency: text('transparency').notNull(), // 'opaque', 'transparent'
+  startDateTime: timestamp('startDateTime', { mode: 'date' }).notNull(),
+  endDateTime: timestamp('endDateTime', { mode: 'date' }).notNull(),
+  originalSummary: text('originalSummary'), // Original summary from source
+  syncedSummary: text('syncedSummary').notNull(), // Summary actually synced (privacy-filtered)
+  sourceTimezone: text('sourceTimezone'),
+  lastSyncedAt: timestamp('lastSyncedAt', { mode: 'date' }).defaultNow().notNull(),
+  createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
 });

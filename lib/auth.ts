@@ -14,7 +14,7 @@ export const authOptions: NextAuthOptions = {
         params: {
           scope: 'openid email profile https://www.googleapis.com/auth/calendar',
           access_type: 'offline',
-          prompt: 'consent select_account',
+          prompt: 'consent',
           include_granted_scopes: 'true',
           // Enhanced security with PKCE
           code_challenge_method: 'S256',

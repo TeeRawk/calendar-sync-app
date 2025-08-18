@@ -293,29 +293,36 @@ export async function createGoogleCalendarEvent(
     };
     
     
-    // Convert Arizona time to Madrid time
+    // Smart timezone conversion based on source timezone
     const convertToUserTimezone = (sourceDate: Date) => {
       const hours = sourceDate.getHours();
       const minutes = sourceDate.getMinutes();
       
-      // Arizona (MST) is UTC-7, Madrid is UTC+1/+2 (depending on DST)
-      const arizonaOffset = -7; // Arizona is UTC-7 (no DST)
-      const madridOffset = new Date().getTimezoneOffset() / -60; // Madrid offset in hours
-      const timeDifference = madridOffset - arizonaOffset;
+      // Only apply timezone conversion if we know the source timezone is Arizona
+      if (event.sourceTimezone === 'America/Phoenix' && targetTimeZone !== 'America/Phoenix') {
+        // Arizona (MST) is UTC-7, Madrid is UTC+1/+2 (depending on DST)
+        const arizonaOffset = -7; // Arizona is UTC-7 (no DST)
+        const madridOffset = new Date().getTimezoneOffset() / -60; // Madrid offset in hours
+        const timeDifference = madridOffset - arizonaOffset;
+        
+        // Convert Arizona time to Madrid time
+        const convertedTime = new Date(
+          sourceDate.getFullYear(),
+          sourceDate.getMonth(),
+          sourceDate.getDate(),
+          hours + timeDifference,
+          minutes,
+          sourceDate.getSeconds()
+        );
+        
+        console.log(`  ${hours}:${String(minutes).padStart(2, '0')} Arizona → ${convertedTime.getHours()}:${String(convertedTime.getMinutes()).padStart(2, '0')} ${targetTimeZone}`);
+        
+        return convertedTime;
+      }
       
-      // Convert Arizona time to Madrid time
-      const convertedTime = new Date(
-        sourceDate.getFullYear(),
-        sourceDate.getMonth(),
-        sourceDate.getDate(),
-        hours + timeDifference,
-        minutes,
-        sourceDate.getSeconds()
-      );
-      
-      console.log(`  ${hours}:${String(minutes).padStart(2, '0')} Arizona → ${convertedTime.getHours()}:${String(convertedTime.getMinutes()).padStart(2, '0')} Madrid`);
-      
-      return convertedTime;
+      // For other timezones or when source/target are the same, return original date
+      console.log(`  Keeping original time for ${event.sourceTimezone || 'unknown'} → ${targetTimeZone}: ${hours}:${String(minutes).padStart(2, '0')}`);
+      return sourceDate;
     };
     
     const adjustedStart = convertToUserTimezone(event.start);
@@ -416,22 +423,31 @@ export async function updateGoogleCalendarEvent(
       const hours = sourceDate.getHours();
       const minutes = sourceDate.getMinutes();
       
-      // Arizona (MST) is UTC-7, Madrid is UTC+1/+2 (depending on DST)
-      const arizonaOffset = -7; // Arizona is UTC-7 (no DST)
-      const madridOffset = new Date().getTimezoneOffset() / -60; // Madrid offset in hours
-      const timeDifference = madridOffset - arizonaOffset;
+      // Only apply timezone conversion if we know the source timezone is Arizona
+      if (event.sourceTimezone === 'America/Phoenix' && targetTimeZone !== 'America/Phoenix') {
+        // Arizona (MST) is UTC-7, Madrid is UTC+1/+2 (depending on DST)
+        const arizonaOffset = -7; // Arizona is UTC-7 (no DST)
+        const madridOffset = new Date().getTimezoneOffset() / -60; // Madrid offset in hours
+        const timeDifference = madridOffset - arizonaOffset;
+        
+        // Convert Arizona time to Madrid time
+        const convertedTime = new Date(
+          sourceDate.getFullYear(),
+          sourceDate.getMonth(),
+          sourceDate.getDate(),
+          hours + timeDifference,
+          minutes,
+          sourceDate.getSeconds()
+        );
+        
+        console.log(`🔄 Update: ${hours}:${String(minutes).padStart(2, '0')} Arizona → ${convertedTime.getHours()}:${String(convertedTime.getMinutes()).padStart(2, '0')} ${targetTimeZone}`);
+        
+        return convertedTime;
+      }
       
-      // Convert Arizona time to Madrid time
-      const convertedTime = new Date(
-        sourceDate.getFullYear(),
-        sourceDate.getMonth(),
-        sourceDate.getDate(),
-        hours + timeDifference,
-        minutes,
-        sourceDate.getSeconds()
-      );
-      
-      return convertedTime;
+      // For other timezones or when source/target are the same, return original date
+      console.log(`🔄 Update: Keeping original time for ${event.sourceTimezone || 'unknown'} → ${targetTimeZone}: ${hours}:${String(minutes).padStart(2, '0')}`);
+      return sourceDate;
     };
     
     const adjustedStart = convertToUserTimezone(event.start);

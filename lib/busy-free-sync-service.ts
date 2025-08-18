@@ -151,9 +151,45 @@ export async function syncBusyFreeCalendar(
             sourceTimezone: busyFreeData.timezone,
           };
 
-          // Generate unique key for duplicate detection
-          const uniqueKey = `${busyFreeEvent.uid}:${busyFreeEvent.start.toISOString()}`;
-          console.log(`🔍 Checking for duplicate with key: ${uniqueKey}`);
+          // TIMEZONE-AWARE DUPLICATE DETECTION:
+          // We need to generate the key using the same timezone conversion that createGoogleCalendarEvent will use
+          // This ensures duplicate detection matches what gets stored in Google Calendar
+          const convertToUserTimezone = (sourceDate: Date, sourceTimezone?: string) => {
+            // If we have timezone info from the source calendar, use it for conversion
+            if (sourceTimezone && userTimeZone && sourceTimezone !== userTimeZone) {
+              // For now, handle common timezone conversions
+              // This can be expanded with a proper timezone library if needed
+              const hours = sourceDate.getHours();
+              const minutes = sourceDate.getMinutes();
+              
+              // Simple timezone offset conversion (this should ideally use a timezone library)
+              if (sourceTimezone === 'America/Phoenix' && userTimeZone) {
+                // Arizona is UTC-7 (no DST)
+                const arizonaOffset = -7;
+                const userOffset = new Date().getTimezoneOffset() / -60;
+                const timeDifference = userOffset - arizonaOffset;
+                
+                const convertedTime = new Date(
+                  sourceDate.getFullYear(),
+                  sourceDate.getMonth(),
+                  sourceDate.getDate(),
+                  hours + timeDifference,
+                  minutes,
+                  sourceDate.getSeconds()
+                );
+                
+                return convertedTime;
+              }
+            }
+            
+            // Return original date if no conversion needed
+            return sourceDate;
+          };
+          
+          // Generate key using timezone-adjusted time (for duplicate detection only)
+          const adjustedStartForKey = convertToUserTimezone(busyFreeEvent.start, busyFreeData.timezone);
+          const uniqueKey = `${busyFreeEvent.uid}:${adjustedStartForKey.toISOString()}`;
+          console.log(`🔍 Checking for duplicate with timezone-adjusted key: ${uniqueKey}`);
 
           if (existingEvents[uniqueKey]) {
             // Update existing event
